@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-app-instrumented
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-app-instrumented
+  template:
+    metadata:
+      labels:
+        app: go-app-instrumented
+    spec:
+      shareProcessNamespace: true
+      containers:
+        - name: go-app
+          image: go-app ## Image created from go-app folder
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          command: ["/app/go-app"]
+        - name: autoinstrumentation-go
+          image: otel/autoinstrumentation-go
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: OTEL_GO_AUTO_TARGET_EXE
+              value: /app/go-app
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger:4318"
+            - name: OTEL_SERVICE_NAME
+              value: "go-app-test"
+            - name: OTEL_LOG_LEVEL
+              value: debug
+            - name: OTEL_GO_AUTO_INCLUDE_DB_STATEMENT
+              value: "true"
+            - name: OTEL_GO_AUTO_PARSE_DB_STATEMENT
+              value: "true"
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
+            - name: OTEL_GO_AUTO_PARSE_DB_STATEMENT
+              value: "true"
+            - name: CGO_ENABLED
+              value: "1"
+          securityContext:
+            runAsUser: 0  # Run as root to allow instrumentation (consider security implications)
+            privileged: true  # This grants elevated privileges needed for auto-instrumentation
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-app-service
+spec:
+  selector:
+    app: go-app-instrumented
+  ports:
+  - name: go-app-service
+    port: 8080
+    targetPort: 8080
+
+
